@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>家庭血壓紀錄</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🩺</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<style>
+:root{
+  --paper:#F3F6F5; --panel:#FFFFFF; --ink:#1E2A32; --muted:#5E6E78; --line:#D6DFDD;
+  --sys:#B23A48; --dia:#2B7A80; --pulse:#8A6D1F; --focus:#2F5FD0;
+  --ok:#2E7D4F; --warn:#B7791F; --high:#C0532B; --danger:#9B1C2E;
+  --num:"Barlow Condensed","Noto Sans TC",system-ui,sans-serif;
+  --txt:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#141B1F; --panel:#1C252A; --ink:#E6ECEA; --muted:#9AAAB2; --line:#2E3A40;
+    --sys:#E0707C; --dia:#5FB8BE; --pulse:#D4B25A; --focus:#7FA3FF;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#141B1F; --panel:#1C252A; --ink:#E6ECEA; --muted:#9AAAB2; --line:#2E3A40;
+  --sys:#E0707C; --dia:#5FB8BE; --pulse:#D4B25A; --focus:#7FA3FF;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--txt);font-size:16px;line-height:1.6}
+.wrap{max-width:980px;margin:0 auto;padding:20px 16px 48px}
+header.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+h1{font-size:1.5rem;margin:0;font-weight:700;letter-spacing:.02em}
+h2{font-size:1.125rem;margin:0 0 12px;font-weight:700}
+.users{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.user-btn{border:1.5px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 16px;border-radius:999px;font:inherit;cursor:pointer;min-height:44px}
+.user-btn[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.icon-btn{border:1.5px dashed var(--line);background:transparent;color:var(--muted);padding:8px 14px;border-radius:999px;font:inherit;cursor:pointer;min-height:44px}
+section.block{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:18px}
+
+/* 大讀數：本工具唯一的視覺重點 */
+.monitor{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:end;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:16px}
+.reading{font-family:var(--num);font-weight:600;font-size:clamp(3.5rem,14vw,6.5rem);line-height:.9;font-variant-numeric:tabular-nums;white-space:nowrap}
+.reading .s{color:var(--sys)} .reading .d{color:var(--dia)} .reading .slash{color:var(--line);margin:0 .06em}
+.reading-meta{color:var(--muted);font-size:.95rem;margin-top:8px}
+.tag{display:inline-block;padding:4px 12px;border-radius:6px;font-size:.9rem;font-weight:500;color:#fff}
+.c0{background:var(--ok)} .c1{background:var(--warn)} .c2{background:var(--high)} .c3{background:var(--danger)} .c4{background:#5B0A18}
+
+form.entry{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:.9rem;color:var(--muted)}
+.field input{font:inherit;font-size:1.25rem;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);min-height:48px;width:100%}
+.field input.big{font-family:var(--num);font-size:1.75rem;font-weight:600;font-variant-numeric:tabular-nums}
+#sys{border-left:5px solid var(--sys)} #dia{border-left:5px solid var(--dia)} #pulse{border-left:5px solid var(--pulse)}
+.span2{grid-column:span 2} .span4{grid-column:1/-1}
+.row-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-weight:500;padding:10px 20px;border-radius:8px;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;min-height:48px}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn:disabled{opacity:.5;cursor:wait}
+.msg{font-size:.95rem;color:var(--muted)} .msg.err{color:var(--danger)}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.seg{display:inline-flex;border:1.5px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;border:0;background:transparent;color:var(--ink);padding:8px 14px;cursor:pointer;min-height:40px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.chart-box{position:relative;height:320px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
+.stat{border-top:3px solid var(--line);padding-top:6px}
+.stat b{display:block;font-family:var(--num);font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums}
+.stat span{color:var(--muted);font-size:.85rem}
+
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.95rem;min-width:560px}
+th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:.85rem}
+td.n{font-family:var(--num);font-size:1.2rem;font-variant-numeric:tabular-nums}
+td.note{white-space:normal;max-width:220px;color:var(--muted)}
+.del{border:0;background:transparent;color:var(--muted);cursor:pointer;font:inherit;padding:6px 8px;border-radius:6px}
+.del:hover{color:var(--danger)}
+.empty{color:var(--muted);padding:24px 0;text-align:center}
+
+.export-grid{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+select{font:inherit;padding:10px 12px;border-radius:8px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);min-height:48px}
+.fine{font-size:.85rem;color:var(--muted);margin-top:12px}
+
+dialog{border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--ink);padding:20px;width:min(420px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+.ulist{list-style:none;padding:0;margin:0 0 12px}
+.ulist li{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.ulist input{flex:1;font:inherit;padding:8px 10px;border-radius:8px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);min-height:44px}
+
+@media (max-width:640px){
+  form.entry{grid-template-columns:repeat(2,1fr)}
+  .span2{grid-column:1/-1}
+  .monitor{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .chart-box{height:260px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>家庭血壓紀錄</h1>
+    <div class="users" id="userBar" role="group" aria-label="切換使用者"></div>
+  </header>
+
+  <!-- 紀錄 -->
+  <section class="block" aria-labelledby="h-entry">
+    <div class="monitor">
+      <div>
+        <div class="reading" id="lastReading"><span class="s">---</span><span class="slash">/</span><span class="d">--</span></div>
+        <div class="reading-meta" id="lastMeta">還沒有紀錄，從下面輸入第一筆</div>
+      </div>
+      <div id="lastTag"></div>
+    </div>
+    <h2 id="h-entry">新增一筆 <span id="entryUser" style="color:var(--muted);font-weight:400"></span></h2>
+    <form class="entry" id="entryForm" novalidate>
+      <div class="field"><label for="sys">收縮壓（高）</label><input class="big" id="sys" type="number" inputmode="numeric" min="50" max="260" placeholder="120" required></div>
+      <div class="field"><label for="dia">舒張壓（低）</label><input class="big" id="dia" type="number" inputmode="numeric" min="30" max="180" placeholder="80" required></div>
+      <div class="field"><label for="pulse">脈搏（選填）</label><input class="big" id="pulse" type="number" inputmode="numeric" min="30" max="220" placeholder="72"></div>
+      <div class="field"><label for="time">量測時間</label><input id="time" type="datetime-local" required></div>
+      <div class="field span4"><label for="note">備註（選填）</label><input id="note" type="text" maxlength="100" placeholder="例如：早上起床、飯後、服藥後"></div>
+      <div class="row-actions span4">
+        <button class="btn" type="submit">儲存紀錄</button>
+        <button class="btn ghost" type="button" id="nowBtn">時間改為現在</button>
+        <span class="msg" id="formMsg" role="status"></span>
+      </div>
+    </form>
+  </section>
+
+  <!-- 曲線圖 -->
+  <section class="block" aria-labelledby="h-chart">
+    <div class="toolbar">
+      <h2 id="h-chart" style="margin:0">血壓趨勢</h2>
+      <div class="seg" id="rangeSeg" role="group" aria-label="時間範圍">
+        <button data-days="7">7 天</button><button data-days="30" aria-pressed="true">30 天</button><button data-days="90">90 天</button><button data-days="0">全部</button>
+      </div>
+    </div>
+    <div class="chart-box"><canvas id="bpChart" aria-label="血壓趨勢曲線圖"></canvas></div>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <!-- 匯出 -->
+  <section class="block" aria-labelledby="h-export">
+    <h2 id="h-export">匯出報表</h2>
+    <div class="export-grid">
+      <select id="exportScope" aria-label="匯出範圍">
+        <option value="current">目前使用者</option>
+        <option value="all">全部使用者</option>
+      </select>
+      <button class="btn" id="xlsxBtn">下載 Excel</button>
+      <button class="btn" id="pptBtn">下載 PPT 簡報</button>
+    </div>
+    <div class="export-grid" style="margin-top:10px">
+      <button class="btn ghost" id="backupBtn">備份資料 (JSON)</button>
+      <label class="btn ghost" style="display:inline-flex;align-items:center">還原備份<input type="file" id="restoreInput" accept=".json,application/json" hidden></label>
+      <span class="msg" id="exportMsg" role="status"></span>
+    </div>
+    <p class="fine">資料只存在這台裝置的瀏覽器裡。換手機、換電腦或清除瀏覽器資料前，請先「備份資料」。</p>
+  </section>
+
+  <!-- 歷史 -->
+  <section class="block" aria-labelledby="h-hist">
+    <h2 id="h-hist">歷史紀錄</h2>
+    <div class="table-scroll"><table>
+      <thead><tr><th>量測時間</th><th>收縮壓</th><th>舒張壓</th><th>脈搏</th><th>分級</th><th>備註</th><th></th></tr></thead>
+      <tbody id="histBody"></tbody>
+    </table></div>
+  </section>
+
+  <p class="fine">分級依美國心臟學會（AHA）標準，僅供自我追蹤參考，不能取代醫師診斷。若收縮壓超過 180 或舒張壓超過 120，請盡快就醫。</p>
+</div>
+
+<dialog id="userDlg">
+  <h2>管理使用者</h2>
+  <ul class="ulist" id="userList"></ul>
+  <div class="row-actions">
+    <button class="btn ghost" id="addUserBtn" type="button">新增使用者</button>
+    <button class="btn" id="saveUsersBtn" type="button">儲存</button>
+  </div>
+  <p class="msg" id="userMsg"></p>
+</dialog>
+
+<script>
+(() => {
+  const KEY = 'bp-log-v1';
+  const $ = id => document.getElementById(id);
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  /* ---------- 資料 ---------- */
+  function defaultData(){
+    const a = uid(), b = uid() + 'b';
+    return { users:[{id:a,name:'爸爸'},{id:b,name:'媽媽'}], current:a, records:[] };
+  }
+  function load(){
+    try{
+      const d = JSON.parse(localStorage.getItem(KEY));
+      if (d && Array.isArray(d.users) && d.users.length && Array.isArray(d.records)) return d;
+    }catch(e){}
+    return defaultData();
+  }
+  let data = load();
+  function save(){
+    try{ localStorage.setItem(KEY, JSON.stringify(data)); }
+    catch(e){ $('formMsg').textContent = '無法儲存到瀏覽器，請確認沒有使用無痕模式。'; $('formMsg').className='msg err'; }
+  }
+  const curUser = () => data.users.find(u => u.id === data.current) || data.users[0];
+  const recordsOf = userId => data.records.filter(r => r.userId === userId).sort((a,b) => new Date(a.time) - new Date(b.time));
+
+  /* ---------- 分級 ---------- */
+  const CATS = ['正常','血壓偏高','高血壓第一期','高血壓第二期','高血壓危象'];
+  function classify(s, d){
+    if (s > 180 || d > 120) return 4;
+    if (s >= 140 || d >= 90) return 3;
+    if (s >= 130 || d >= 80) return 2;
+    if (s >= 120) return 1;
+    return 0;
+  }
+
+  /* ---------- 時間工具 ---------- */
+  const pad = n => String(n).padStart(2,'0');
+  const fmt = iso => { const d = new Date(iso); return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const fmtShort = iso => { const d = new Date(iso); return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const localNow = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,16); };
+  const stamp = () => { const d = new Date(); return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`; };
+
+  /* ---------- 使用者列 ---------- */
+  function renderUsers(){
+    const bar = $('userBar'); bar.innerHTML = '';
+    data.users.forEach(u => {
+      const b = document.createElement('button');
+      b.className = 'user-btn'; b.textContent = u.name;
+      b.setAttribute('aria-pressed', u.id === data.current);
+      b.onclick = () => { data.current = u.id; save(); renderAll(); };
+      bar.appendChild(b);
+    });
+    const m = document.createElement('button');
+    m.className = 'icon-btn'; m.textContent = '管理使用者';
+    m.onclick = openUserDlg;
+    bar.appendChild(m);
+    $('entryUser').textContent = '— ' + curUser().name;
+  }
+
+  /* 使用者管理視窗 */
+  let draftUsers = [];
+  function openUserDlg(){
+    draftUsers = data.users.map(u => ({...u}));
+    drawUserList(); $('userMsg').textContent = '';
+    $('userDlg').showModal();
+  }
+  function drawUserList(){
+    const ul = $('userList'); ul.innerHTML = '';
+    draftUsers.forEach((u,i) => {
+      const li = document.createElement('li');
+      const inp = document.createElement('input');
+      inp.value = u.name; inp.maxLength = 20; inp.setAttribute('aria-label','使用者名稱');
+      inp.oninput = () => { u.name = inp.value; };
+      const del = document.createElement('button');
+      del.className = 'del'; del.type = 'button'; del.textContent = '刪除';
+      del.onclick = () => {
+        if (draftUsers.length <= 2){ $('userMsg').textContent = '至少需要保留兩位使用者。'; return; }
+        const n = data.records.filter(r => r.userId === u.id).length;
+        if (n && !confirm(`「${u.name}」有 ${n} 筆紀錄，刪除後紀錄也會一起移除。確定嗎？`)) return;
+        draftUsers.splice(i,1); drawUserList();
+      };
+      li.append(inp, del); ul.appendChild(li);
+    });
+  }
+  $('addUserBtn').onclick = () => { draftUsers.push({id:uid(), name:`使用者${draftUsers.length+1}`}); drawUserList(); };
+  $('saveUsersBtn').onclick = () => {
+    if (draftUsers.some(u => !u.name.trim())){ $('userMsg').textContent = '名稱不能空白。'; return; }
+    const ids = new Set(draftUsers.map(u => u.id));
+    data.records = data.records.filter(r => ids.has(r.userId));
+    data.users = draftUsers.map(u => ({id:u.id, name:u.name.trim()}));
+    if (!ids.has(data.current)) data.current = data.users[0].id;
+    save(); $('userDlg').close(); renderAll();
+  };
+
+  /* ---------- 新增紀錄 ---------- */
+  $('time').value = localNow();
+  $('nowBtn').onclick = () => { $('time').value = localNow(); };
+  $('entryForm').onsubmit = e => {
+    e.preventDefault();
+    const msg = $('formMsg'); msg.className = 'msg';
+    const s = +$('sys').value, d = +$('dia').value, p = $('pulse').value ? +$('pulse').value : null;
+    const t = $('time').value;
+    if (!s || !d){ msg.textContent = '請輸入收縮壓和舒張壓。'; msg.className='msg err'; return; }
+    if (s < 50 || s > 260 || d < 30 || d > 180){ msg.textContent = '數值超出合理範圍，請再確認一次。'; msg.className='msg err'; return; }
+    if (d >= s){ msg.textContent = '舒張壓應該低於收縮壓，可能兩格填反了。'; msg.className='msg err'; return; }
+    if (p !== null && (p < 30 || p > 220)){ msg.textContent = '脈搏數值不合理，請再確認。'; msg.className='msg err'; return; }
+    if (!t){ msg.textContent = '請選擇量測時間。'; msg.className='msg err'; return; }
+    data.records.push({ id:uid(), userId:data.current, time:new Date(t).toISOString(), sys:s, dia:d, pulse:p, note:$('note').value.trim() });
+    save();
+    $('sys').value = ''; $('dia').value = ''; $('pulse').value = ''; $('note').value = ''; $('time').value = localNow();
+    msg.textContent = `已儲存 ${s}/${d}`;
+    renderAll();
+    $('sys').focus();
+  };
+
+  /* ---------- 最新讀數 ---------- */
+  function renderLast(){
+    const recs = recordsOf(data.current);
+    const r = recs[recs.length-1];
+    if (!r){
+      $('lastReading').innerHTML = '<span class="s">---</span><span class="slash">/</span><span class="d">--</span>';
+      $('lastMeta').textContent = '還沒有紀錄，從下面輸入第一筆'; $('lastTag').innerHTML = ''; return;
+    }
+    $('lastReading').innerHTML = `<span class="s">${r.sys}</span><span class="slash">/</span><span class="d">${r.dia}</span>`;
+    $('lastMeta').textContent = `最近一次 ${fmt(r.time)}${r.pulse ? '　脈搏 ' + r.pulse : ''}`;
+    const c = classify(r.sys, r.dia);
+    $('lastTag').innerHTML = `<span class="tag c${c}">${CATS[c]}</span>`;
+  }
+
+  /* ---------- 曲線圖 ---------- */
+  let rangeDays = 30, chart = null;
+  document.querySelectorAll('#rangeSeg button').forEach(b => b.onclick = () => {
+    rangeDays = +b.dataset.days;
+    document.querySelectorAll('#rangeSeg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    renderChart();
+  });
+  function inRange(recs, days){
+    if (!days) return recs;
+    const from = Date.now() - days*864e5;
+    return recs.filter(r => new Date(r.time) >= from);
+  }
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  function renderChart(){
+    const recs = inRange(recordsOf(data.current), rangeDays);
+    const labels = recs.map(r => fmtShort(r.time));
+    const ref = (v) => recs.map(() => v);
+    const ds = [
+      {label:'收縮壓', data:recs.map(r=>r.sys), borderColor:css('--sys'), backgroundColor:css('--sys'), tension:.25, pointRadius:4, borderWidth:2.5},
+      {label:'舒張壓', data:recs.map(r=>r.dia), borderColor:css('--dia'), backgroundColor:css('--dia'), tension:.25, pointRadius:4, borderWidth:2.5},
+      {label:'脈搏', data:recs.map(r=>r.pulse), borderColor:css('--pulse'), backgroundColor:css('--pulse'), tension:.25, pointRadius:3, borderWidth:1.5, borderDash:[4,4], hidden:true, spanGaps:true},
+      {label:'130 參考線', data:ref(130), borderColor:css('--muted'), borderDash:[6,6], borderWidth:1, pointRadius:0},
+      {label:'80 參考線', data:ref(80), borderColor:css('--muted'), borderDash:[6,6], borderWidth:1, pointRadius:0}
+    ];
+    if (chart) chart.destroy();
+    chart = new Chart($('bpChart'), {
+      type:'line', data:{labels, datasets:ds},
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:false,
+        interaction:{mode:'index', intersect:false},
+        plugins:{ legend:{labels:{color:css('--ink'), font:{family:css('--txt')}, filter:i => !i.text.includes('參考線')}} },
+        scales:{
+          x:{ticks:{color:css('--muted'), maxRotation:0, autoSkip:true, maxTicksLimit:7}, grid:{color:css('--line')}},
+          y:{suggestedMin:50, suggestedMax:170, ticks:{color:css('--muted')}, grid:{color:css('--line')}}
+        }
+      }
+    });
+    renderStats(recs);
+  }
+  function summarize(recs){
+    if (!recs.length) return null;
+    const avg = k => { const v = recs.map(r=>r[k]).filter(x=>x!=null); return v.length ? Math.round(v.reduce((a,b)=>a+b,0)/v.length) : null; };
+    return {
+      n:recs.length, sys:avg('sys'), dia:avg('dia'), pulse:avg('pulse'),
+      maxSys:Math.max(...recs.map(r=>r.sys)), maxDia:Math.max(...recs.map(r=>r.dia)),
+      minSys:Math.min(...recs.map(r=>r.sys)), minDia:Math.min(...recs.map(r=>r.dia)),
+      cats:CATS.map((_,i) => recs.filter(r => classify(r.sys,r.dia)===i).length)
+    };
+  }
+  function renderStats(recs){
+    const s = summarize(recs);
+    $('stats').innerHTML = s ? `
+      <div class="stat"><b>${s.sys}/${s.dia}</b><span>平均血壓</span></div>
+      <div class="stat"><b>${s.maxSys}/${s.maxDia}</b><span>最高</span></div>
+      <div class="stat"><b>${s.pulse ?? '—'}</b><span>平均脈搏</span></div>
+      <div class="stat"><b>${s.n}</b><span>筆數</span></div>` : '<p class="empty" style="grid-column:1/-1">這段期間沒有紀錄</p>';
+  }
+
+  /* ---------- 歷史表 ---------- */
+  function renderHistory(){
+    const recs = recordsOf(data.current).reverse();
+    const tb = $('histBody');
+    if (!recs.length){ tb.innerHTML = '<tr><td colspan="7" class="empty">還沒有紀錄</td></tr>'; return; }
+    tb.innerHTML = '';
+    recs.forEach(r => {
+      const c = classify(r.sys, r.dia);
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${fmt(r.time)}</td><td class="n" style="color:var(--sys)">${r.sys}</td><td class="n" style="color:var(--dia)">${r.dia}</td><td class="n">${r.pulse ?? '—'}</td><td><span class="tag c${c}">${CATS[c]}</span></td><td class="note"></td><td></td>`;
+      tr.querySelector('.note').textContent = r.note || '';
+      const del = document.createElement('button');
+      del.className = 'del'; del.textContent = '刪除';
+      del.setAttribute('aria-label', `刪除 ${fmt(r.time)} 的紀錄`);
+      del.onclick = () => { if (confirm(`刪除 ${fmt(r.time)} ${r.sys}/${r.dia} 這筆紀錄？`)){ data.records = data.records.filter(x => x.id !== r.id); save(); renderAll(); } };
+      tr.lastElementChild.appendChild(del);
+      tb.appendChild(tr);
+    });
+  }
+
+  /* ---------- 匯出 Excel ---------- */
+  const targetUsers = () => $('exportScope').value === 'all' ? data.users : [curUser()];
+  const safeSheet = name => name.replace(/[\\\/\?\*\[\]:]/g,'_').slice(0,31) || '工作表';
+  function setExportMsg(t, err){ $('exportMsg').textContent = t; $('exportMsg').className = err ? 'msg err' : 'msg'; }
+
+  $('xlsxBtn').onclick = () => {
+    const users = targetUsers();
+    if (!users.some(u => recordsOf(u.id).length)){ setExportMsg('沒有可匯出的紀錄。', true); return; }
+    const wb = XLSX.utils.book_new();
+    const summary = [];
+    const used = new Set();
+    users.forEach(u => {
+      const recs = recordsOf(u.id);
+      const rows = recs.map(r => ({ '量測時間':fmt(r.time), '收縮壓':r.sys, '舒張壓':r.dia, '脈搏':r.pulse ?? '', '分級':CATS[classify(r.sys,r.dia)], '備註':r.note || '' }));
+      const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{'量測時間':'（無紀錄）'}]);
+      ws['!cols'] = [{wch:18},{wch:8},{wch:8},{wch:8},{wch:14},{wch:30}];
+      let name = safeSheet(u.name); while (used.has(name)) name = safeSheet(name + '_'); used.add(name);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+      const s = summarize(recs);
+      summary.push({ '使用者':u.name, '筆數':s ? s.n : 0, '平均收縮壓':s?.sys ?? '', '平均舒張壓':s?.dia ?? '', '平均脈搏':s?.pulse ?? '', '最高':s ? `${s.maxSys}/${s.maxDia}` : '', '最低':s ? `${s.minSys}/${s.minDia}` : '',
+        '第一筆':recs[0] ? fmt(recs[0].time) : '', '最後一筆':recs.length ? fmt(recs[recs.length-1].time) : '' });
+    });
+    const sw = XLSX.utils.json_to_sheet(summary);
+    sw['!cols'] = [{wch:10},{wch:6},{wch:10},{wch:10},{wch:9},{wch:9},{wch:9},{wch:18},{wch:18}];
+    XLSX.utils.book_append_sheet(wb, sw, '統計摘要');
+    const label = users.length === 1 ? users[0].name : '全部';
+    XLSX.writeFile(wb, `血壓紀錄_${label}_${stamp()}.xlsx`);
+    setExportMsg('Excel 已下載。');
+  };
+
+  /* ---------- 匯出 PPTX ---------- */
+  $('pptBtn').onclick = async () => {
+    const users = targetUsers().filter(u => recordsOf(u.id).length);
+    if (!users.length){ setExportMsg('沒有可匯出的紀錄。', true); return; }
+    const btn = $('pptBtn'); btn.disabled = true; setExportMsg('正在產生簡報…');
+    try{
+      const pres = new PptxGenJS();
+      pres.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 in
+      const F = 'Microsoft JhengHei', INK = '1E2A32', MUTED = '5E6E78', SYS = 'B23A48', DIA = '2B7A80', LINE = 'D6DFDD';
+      const catColor = ['2E7D4F','B7791F','C0532B','9B1C2E','5B0A18'];
+
+      // 封面
+      const cover = pres.addSlide(); cover.background = {color:'F3F6F5'};
+      cover.addShape(pres.ShapeType.rect, {x:0, y:0, w:0.25, h:7.5, fill:{color:SYS}});
+      cover.addText('血壓紀錄報告', {x:0.9, y:2.3, w:11, h:1.2, fontFace:F, fontSize:44, bold:true, color:INK});
+      cover.addText(users.map(u=>u.name).join('、'), {x:0.9, y:3.5, w:11, h:0.7, fontFace:F, fontSize:24, color:MUTED});
+      cover.addText(`產生日期 ${fmt(new Date().toISOString()).slice(0,10)}`, {x:0.9, y:4.3, w:11, h:0.5, fontFace:F, fontSize:16, color:MUTED});
+
+      users.forEach(u => {
+        const recs = recordsOf(u.id), s = summarize(recs);
+        const period = `${fmt(recs[0].time).slice(0,10)} 至 ${fmt(recs[recs.length-1].time).slice(0,10)}`;
+
+        // 摘要
+        const sl = pres.addSlide();
+        sl.addText(`${u.name}｜統計摘要`, {x:0.6, y:0.4, w:12, h:0.7, fontFace:F, fontSize:28, bold:true, color:INK});
+        sl.addText(`期間 ${period}，共 ${s.n} 筆`, {x:0.6, y:1.05, w:12, h:0.45, fontFace:F, fontSize:14, color:MUTED});
+        const cards = [['平均血壓', `${s.sys}/${s.dia}`], ['最高', `${s.maxSys}/${s.maxDia}`], ['最低', `${s.minSys}/${s.minDia}`], ['平均脈搏', s.pulse ?? '—']];
+        cards.forEach((c,i) => {
+          const x = 0.6 + i*3.1;
+          sl.addShape(pres.ShapeType.rect, {x, y:1.8, w:2.9, h:1.7, fill:{color:'FFFFFF'}, line:{color:LINE, width:1}});
+          sl.addText(String(c[1]), {x, y:1.95, w:2.9, h:0.95, fontFace:F, fontSize:36, bold:true, color: i<3 ? SYS : INK, align:'center'});
+          sl.addText(c[0], {x, y:2.9, w:2.9, h:0.45, fontFace:F, fontSize:14, color:MUTED, align:'center'});
+        });
+        sl.addText('血壓分級分布', {x:0.6, y:3.9, w:6, h:0.5, fontFace:F, fontSize:18, bold:true, color:INK});
+        const maxCat = Math.max(...s.cats, 1);
+        CATS.forEach((c,i) => {
+          const y = 4.5 + i*0.52;
+          sl.addText(c, {x:0.6, y, w:2.2, h:0.42, fontFace:F, fontSize:13, color:INK});
+          const w = Math.max(0.05, 7.5 * s.cats[i] / maxCat);
+          sl.addShape(pres.ShapeType.rect, {x:2.9, y:y+0.08, w, h:0.28, fill:{color:catColor[i]}});
+          sl.addText(`${s.cats[i]} 筆（${Math.round(s.cats[i]/s.n*100)}%）`, {x:2.9+w+0.15, y, w:2.5, h:0.42, fontFace:F, fontSize:12, color:MUTED});
+        });
+
+        // 曲線圖（原生 PowerPoint 圖表，可在 PPT 內編輯）
+        const cs = pres.addSlide();
+        cs.addText(`${u.name}｜血壓趨勢`, {x:0.6, y:0.4, w:12, h:0.7, fontFace:F, fontSize:28, bold:true, color:INK});
+        const labels = recs.map(r => fmtShort(r.time));
+        const series = [
+          {name:'收縮壓', labels, values:recs.map(r=>r.sys)},
+          {name:'舒張壓', labels, values:recs.map(r=>r.dia)}
+        ];
+        cs.addChart(pres.ChartType.line, series, {
+          x:0.5, y:1.2, w:12.3, h:5.9, chartColors:[SYS, DIA], lineSize:2.5, lineDataSymbolSize:7,
+          showLegend:true, legendPos:'t', legendFontFace:F, legendFontSize:13,
+          catAxisLabelFontFace:F, catAxisLabelFontSize:10, catAxisLabelRotate: labels.length > 12 ? -45 : 0,
+          valAxisMinVal:40, valAxisLabelFontSize:11, valGridLine:{color:LINE, size:0.5},
+          showValue: labels.length <= 20, dataLabelFontSize:9, dataLabelPosition:'t'
+        });
+
+        // 明細表（每頁 13 筆）
+        const per = 13, desc = recs.slice().reverse();
+        for (let p = 0; p < desc.length; p += per){
+          const ts = pres.addSlide();
+          const pages = Math.ceil(desc.length/per);
+          ts.addText(`${u.name}｜量測明細${pages>1 ? `（${p/per+1}/${pages}）` : ''}`, {x:0.6, y:0.35, w:12, h:0.7, fontFace:F, fontSize:26, bold:true, color:INK});
+          const head = ['量測時間','收縮壓','舒張壓','脈搏','分級','備註'].map(t => ({text:t, options:{bold:true, color:'FFFFFF', fill:{color:INK}}}));
+          const rows = desc.slice(p, p+per).map(r => {
+            const c = classify(r.sys, r.dia);
+            return [fmt(r.time), {text:String(r.sys), options:{color:SYS, bold:true}}, {text:String(r.dia), options:{color:DIA, bold:true}},
+                    r.pulse ?? '—', {text:CATS[c], options:{color:catColor[c]}}, r.note || ''];
+          });
+          ts.addTable([head, ...rows], {x:0.6, y:1.15, w:12.1, colW:[2.6,1.3,1.3,1.1,2.2,3.6], fontFace:F, fontSize:12, color:INK,
+            border:{type:'solid', color:LINE, pt:0.75}, rowH:0.4, valign:'middle'});
+        }
+      });
+
+      const end = pres.addSlide();
+      end.addText('本報告分級依美國心臟學會（AHA）標準，僅供自我追蹤參考，實際診斷與治療請諮詢醫師。', {x:0.9, y:3.2, w:11.5, h:1, fontFace:F, fontSize:18, color:MUTED});
+
+      const label = users.length === 1 ? users[0].name : '全部';
+      await pres.writeFile({fileName:`血壓報告_${label}_${stamp()}.pptx`});
+      setExportMsg('簡報已下載。');
+    }catch(err){
+      console.error(err); setExportMsg('簡報產生失敗：' + err.message, true);
+    }finally{ btn.disabled = false; }
+  };
+
+  /* ---------- 備份 / 還原 ---------- */
+  $('backupBtn').onclick = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `血壓備份_${stamp()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    setExportMsg('備份檔已下載。');
+  };
+  $('restoreInput').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      try{
+        const d = JSON.parse(rd.result);
+        if (!Array.isArray(d.users) || !Array.isArray(d.records) || d.users.length < 1) throw new Error('格式不符');
+        if (!confirm(`備份內有 ${d.users.length} 位使用者、${d.records.length} 筆紀錄。還原會覆蓋目前資料，確定嗎？`)) return;
+        data = d; if (!data.users.find(u => u.id === data.current)) data.current = data.users[0].id;
+        save(); renderAll(); setExportMsg('已還原備份。');
+      }catch(err){ setExportMsg('無法讀取這個檔案：' + err.message, true); }
+      e.target.value = '';
+    };
+    rd.readAsText(f);
+  };
+
+  function renderAll(){ renderUsers(); renderLast(); renderChart(); renderHistory(); }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', renderChart);
+  renderAll();
+})();
+</script>
+</body>
+</html>
